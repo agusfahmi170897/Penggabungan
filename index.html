@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pengulang Video</title>
+<style>
+:root{--bg:#f2f6f8;--sf:#fff;--ink:#13212b;--mut:#587080;--ac:#0a6c88;--aci:#fff;--bd:#d3dde4;--er:#b3261e;color-scheme:light dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e161c;--sf:#16222a;--ink:#e7eef2;--mut:#98abb7;--ac:#4cc3e0;--aci:#06202a;--bd:#293a45;--er:#ff8a80}}
+:root[data-theme="dark"]{--bg:#0e161c;--sf:#16222a;--ink:#e7eef2;--mut:#98abb7;--ac:#4cc3e0;--aci:#06202a;--bd:#293a45;--er:#ff8a80}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Avenir Next","Segoe UI",system-ui,sans-serif}
+main{max-width:34rem;margin:0 auto;padding:1.5rem 1rem 3rem}
+h1{font-size:1.75rem;line-height:1.15;margin:0 0 .4rem;letter-spacing:-.02em}
+.sub{color:var(--mut);margin:0 0 1.25rem}
+.drop{position:relative;display:block;border:2px dashed var(--bd);border-radius:12px;padding:1.1rem;text-align:center;background:var(--sf)}
+.drop:hover,.drop:focus-within{border-color:var(--ac)}
+.drop input{position:absolute;inset:0;width:100%;opacity:0;border:0;padding:0;cursor:pointer}
+video{display:block;width:100%;max-height:40vh;margin-top:1rem;border-radius:12px;background:#000}
+section{margin-top:1.25rem}
+.row{display:flex;gap:.5rem}
+input,select,button{font:inherit;color:inherit;border:1px solid var(--bd);border-radius:10px;padding:.65rem .8rem;background:var(--sf)}
+.row input{flex:1;min-width:0}
+.chips{display:flex;flex-wrap:wrap;gap:.4rem;margin:.7rem 0}
+.chips button{padding:.35rem .75rem;border-radius:99px;cursor:pointer}
+.out{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:1rem;margin:1rem 0}
+#tot{font-size:2.6rem;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1}
+#info{color:var(--mut);margin:.35rem 0 .8rem}
+#bar{display:flex;gap:2px;height:14px}
+#bar i{flex:1;background:var(--ac);border-radius:2px}
+#go{width:100%;background:var(--ac);color:var(--aci);border-color:var(--ac);font-weight:600;cursor:pointer}
+#go:disabled{opacity:.5;cursor:not-allowed}
+#msg{min-height:1.5em;margin:.8rem 0 0;color:var(--mut)}
+#msg.err{color:var(--er)}
+details{margin-top:1.5rem;color:var(--mut)}
+code{display:block;margin-top:.5rem;padding:.6rem .7rem;background:var(--sf);border:1px solid var(--bd);border-radius:8px;overflow-x:auto;white-space:pre;color:var(--ink);font-size:.85rem}
+:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+</style>
+</head>
+<body>
+<main>
+<h1>Pengulang video</h1>
+<p class="sub">Ubah klip pendek jadi video berdurasi menit sampai jam. Diproses di perangkatmu, tanpa upload.</p>
+<label class="drop"><input type="file" id="f" accept="video/mp4,video/quicktime,.mp4,.mov,.m4v"><span id="dn">Pilih video MP4 atau MOV</span></label>
+<video id="v" controls loop muted playsinline hidden></video>
+<section id="cfg" hidden>
+<div class="row"><input id="n" type="number" min="1" step="any" value="1" inputmode="decimal" aria-label="Durasi tujuan"><select id="u" aria-label="Satuan"><option value="60">menit</option><option value="3600" selected>jam</option></select></div>
+<div class="chips" id="ch"></div>
+<div class="out"><div id="tot">--:--:--</div><div id="info"></div><div id="bar"></div></div>
+<button id="go" type="button" disabled>Buat video</button>
+</section>
+<p id="msg" role="status"></p>
+<details><summary>WebM, MKV, atau hasil bermasalah</summary><p>Jalankan perintah ini di komputer yang punya ffmpeg:</p><code id="cmd"></code></details>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+let B,D,N,SH,file,dur=0,n=0;
+const enc=t=>[...t].map(c=>c.charCodeAt(0));
+const W=a=>{const o=new Uint8Array(a.length*4),v=new DataView(o.buffer);for(let i=0;i<a.length;i++)v.setUint32(i*4,a[i]);return o};
+const R=(p,k)=>{const o=new Uint32Array(p.length*k);for(let i=0;i<k;i++)o.set(p,i*p.length);return o};
+const mk=(t,...p)=>{const z=p.reduce((a,x)=>a+x.length,8),o=new Uint8Array(z);new DataView(o.buffer).setUint32(0,z);o.set(enc(t),4);let k=8;for(const x of p){o.set(x,k);k+=x.length}return o};
+const raw=x=>new Uint8Array(B.slice(x.s,x.e));
+const aw=x=>{const o=x.s+x.h+4,m=(x.e-o)>>2,r=new Array(m);for(let i=0;i<m;i++)r[i]=D.getUint32(o+i*4);return r};
+const bt=o=>String.fromCharCode(D.getUint8(o),D.getUint8(o+1),D.getUint8(o+2),D.getUint8(o+3));
+function kids(s,e){const r=[];while(s+8<=e){let z=D.getUint32(s),h=8;if(z==1){z=Number(D.getBigUint64(s+8));h=16}else if(!z)z=e-s;if(z<h)break;r.push({t:bt(s+4),s,e:Math.min(s+z,e),h});s+=z}return r}
+function pd(x,a,b){const c=raw(x),v=new DataView(c.buffer);if(c[8])v.setBigUint64(b,v.getBigUint64(b)*BigInt(N));else{const m=v.getUint32(a)*N;if(m>4294967295)throw Error('Durasi terlalu panjang untuk file ini. Coba target yang lebih pendek.');v.setUint32(a,m)}return c}
+function stbl(x){
+const k={};kids(x.s+x.h,x.e).forEach(c=>k[c.t]=c);
+const co=k.stco||k.co64;
+if(!k.stsd||!k.stts||!k.stsc||!k.stsz||!co)throw Error('Struktur MP4 ini belum didukung.');
+const A=c=>aw(c).slice(1),sz=aw(k.stsz),ns=sz[1],o=[raw(k.stsd)];
+let p=A(k.stts);o.push(mk('stts',W([0,p.length/2*N]),W(R(p,N))));
+if(k.stss){p=A(k.stss);const q=new Uint32Array(p.length*N);for(let i=0;i<N;i++)for(let j=0;j<p.length;j++)q[i*p.length+j]=p[j]+i*ns;o.push(mk('stss',W([0,q.length]),W(q)))}
+if(k.ctts){p=A(k.ctts);o.push(mk('ctts',raw(k.ctts).subarray(8,12),W([p.length/2*N]),W(R(p,N))))}
+const cn=D.getUint32(co.s+co.h+4),offs=[];
+for(let i=0;i<cn;i++)offs.push(k.stco?D.getUint32(co.s+co.h+8+i*4):Number(D.getBigUint64(co.s+co.h+8+i*8)));
+p=A(k.stsc);
+{const q=new Uint32Array(p.length*N);for(let i=0;i<N;i++)for(let j=0;j<p.length;j+=3){q[i*p.length+j]=p[j]+i*cn;q[i*p.length+j+1]=p[j+1];q[i*p.length+j+2]=p[j+2]}o.push(mk('stsc',W([0,q.length/3]),W(q)))}
+o.push(sz[0]?mk('stsz',W([0,sz[0],ns*N])):mk('stsz',W([0,0,ns*N]),W(R(sz.slice(2),N))));
+{const q=new Uint32Array(cn*N);for(let i=0;i<N;i++)for(let j=0;j<cn;j++)q[i*cn+j]=offs[j]+SH;o.push(mk('stco',W([0,q.length]),W(q)))}
+return mk('stbl',...o)}
+function rb(x){
+const t=x.t;
+if(t=='mvex')throw Error('Video fragmented MP4 belum didukung.');
+if(t=='mvhd'||t=='mdhd')return pd(x,24,32);
+if(t=='tkhd')return pd(x,28,36);
+if(t=='edts'){const e=kids(x.s+x.h,x.e)[0];return e&&e.t=='elst'&&D.getUint32(e.s+12)==1?mk('edts',pd(e,16,16)):null}
+if(t=='stbl')return stbl(x);
+if(['moov','trak','mdia','minf'].includes(t))return mk(t,...kids(x.s+x.h,x.e).map(c=>rb(c)).filter(Boolean));
+return raw(x)}
+function loop(buf,k){
+B=buf;D=new DataView(buf);N=k;
+const top=kids(0,buf.byteLength),mv=top.find(b=>b.t=='moov'),md=top.filter(b=>b.t=='mdat');
+if(!mv||!md.length)throw Error('File ini bukan MP4 atau MOV standar. Lihat perintah ffmpeg di bawah.');
+const f=top.find(b=>b.t=='ftyp'),ft=f?raw(f):mk('ftyp',enc('isom'),W([512]),enc('isomiso2mp41')),rs=md[0].s,re=md[md.length-1].e;
+SH=ft.length-rs;
+return new Blob([ft,new Uint8Array(buf,rs,re-rs),rb(mv)],{type:'video/mp4'})}
+const hms=s=>{s=Math.round(s);return[s/3600|0,s/60%60|0,s%60].map(x=>String(x).padStart(2,'0')).join(':')};
+const mb=b=>(b/1048576).toFixed(1);
+function upd(){
+const t=(+$('#n').value||0)*$('#u').value;
+n=dur&&t>0?Math.ceil(t/dur):0;
+$('#tot').textContent=n?hms(n*dur):'--:--:--';
+$('#info').textContent=n?'Klip '+dur.toFixed(1)+' detik diulang '+n+'×':'Isi durasi tujuan';
+$('#bar').innerHTML='<i></i>'.repeat(Math.min(n,48));
+$('#go').disabled=!n;
+const x=file?file.name.split('.').pop():'mp4';
+$('#cmd').textContent='ffmpeg -stream_loop '+Math.max(n-1,0)+' -i "'+(file?file.name:'input.'+x)+'" -c copy "loop.'+x+'"'}
+[[5,60],[30,60],[1,3600],[3,3600],[10,3600]].forEach(([a,b])=>{const e=document.createElement('button');e.type='button';e.textContent=a+(b>60?' jam':' menit');e.onclick=()=>{$('#n').value=a;$('#u').value=b;upd()};$('#ch').append(e)});
+$('#n').oninput=upd;$('#u').onchange=upd;
+$('#f').onchange=e=>{file=e.target.files[0];if(!file)return;const v=$('#v');v.src=URL.createObjectURL(file);v.hidden=false;$('#dn').textContent=file.name;$('#msg').className='';$('#msg').textContent='';upd()};
+$('#v').onloadedmetadata=e=>{dur=e.target.duration;$('#cfg').hidden=false;upd()};
+$('#v').onerror=()=>{$('#msg').className='err';$('#msg').textContent='Browser tidak bisa memutar video ini, jadi durasinya belum terbaca.'};
+async function save(b,name){
+const d=window.claude?await claude.use('downloads'):null;
+if(d)return d.save({filename:name,data:b});
+const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),60000)}
+$('#go').onclick=async()=>{
+const m=$('#msg'),g=$('#go');m.className='';m.textContent='Memproses…';g.disabled=true;
+try{await new Promise(r=>setTimeout(r,30));
+const b=loop(await file.arrayBuffer(),n),fn=file.name.replace(/\.[^.]+$/,'')+'_loop_'+hms(n*dur).replace(/:/g,'-')+'.mp4';
+await save(b,fn);m.textContent='Selesai: '+mb(b.size)+' MB, durasi '+hms(n*dur)+'.'}
+catch(e){m.className='err';m.textContent=e.code=='declined'?'Penyimpanan dibatalkan.':(e.message||'Gagal memproses video.')}
+g.disabled=false};
+upd();
+</script>
+</body>
+</html>
